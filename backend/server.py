@@ -264,8 +264,8 @@ def ask_question(req: QuestionRequest):
         }
 
     # Check if user is guessing directly
-    user_text = req.question.strip().lower()
-    if user_text in ["rose", "a rose", "the rose", "is it rose", "is it a rose", "its a rose", "it's a rose"]:
+    user_text = req.question.strip().lower().rstrip("?!.")
+    if user_text in ["rose", "a rose", "the rose", "is it rose", "is it a rose", "its a rose", "it's a rose", "i think it's a rose", "i think it is a rose", "the answer is rose"]:
         game_state["guessed_correctly"] = True
         game_state["game_over"] = True
         return {
