@@ -1,12 +1,11 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { Send, HelpCircle, Sparkles, Loader2 } from 'lucide-react';
+import { HelpCircle, Sparkles, Loader2 } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
 const THINK_SOUND = 'https://assets.mixkit.co/sfx/preview/mixkit-modern-click-box-check-1120.mp3';
 
-// Friendly response mappings for each AI label
 const LABEL_RESPONSES = {
   yes: [
     "Yes! You're on the right track!",
@@ -51,19 +50,9 @@ const getRandomResponse = (label) => {
   return responses[Math.floor(Math.random() * responses.length)];
 };
 
-// Confidence increments per label
-const CONFIDENCE_MAP = {
-  yes: 15,
-  no: 3,
-  close: 12,
-  "i don't know": 5,
-  "too far away": 0,
-};
-
 export const AIGame = ({ onReveal }) => {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
-  const [confidence, setConfidence] = useState(0);
   const [isThinking, setIsThinking] = useState(false);
   const [questionCount, setQuestionCount] = useState(0);
   const [maxQuestions] = useState(20);
@@ -74,7 +63,6 @@ export const AIGame = ({ onReveal }) => {
   const inputRef = useRef(null);
   const pollRef = useRef(null);
 
-  // Poll for model readiness
   useEffect(() => {
     const checkStatus = async () => {
       try {
@@ -84,18 +72,13 @@ export const AIGame = ({ onReveal }) => {
           setModelReady(true);
           setCheckingModel(false);
           clearInterval(pollRef.current);
-          // Reset game on mount
           await fetch(`${API}/game/reset`, { method: 'POST' });
           setTimeout(() => inputRef.current?.focus(), 300);
         }
-      } catch (e) {
-        // Server not ready yet
-      }
+      } catch (e) { /* not ready */ }
     };
-
     checkStatus();
     pollRef.current = setInterval(checkStatus, 2000);
-
     return () => clearInterval(pollRef.current);
   }, []);
 
@@ -103,16 +86,19 @@ export const AIGame = ({ onReveal }) => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  const triggerReveal = useCallback(() => {
+    setIsRevealing(true);
+    setTimeout(() => onReveal(), 2500);
+  }, [onReveal]);
+
   const handleAsk = useCallback(async () => {
     const trimmed = input.trim();
     if (!trimmed || isThinking || isRevealing || !modelReady) return;
 
-    const newQuestion = { type: 'user', text: trimmed };
-    setMessages((prev) => [...prev, newQuestion]);
+    setMessages((prev) => [...prev, { type: 'user', text: trimmed }]);
     setInput('');
     setIsThinking(true);
 
-    // Play subtle click
     try {
       const audio = new Audio(THINK_SOUND);
       audio.volume = 0.2;
@@ -127,45 +113,34 @@ export const AIGame = ({ onReveal }) => {
       });
       const data = await res.json();
 
-      // Simulate thinking delay
       await new Promise((r) => setTimeout(r, 800 + Math.random() * 1000));
 
       setQuestionCount(data.question_count || 0);
 
       if (data.guessed_correctly) {
-        // User guessed correctly via ask
         setMessages((prev) => [
           ...prev,
-          { type: 'ai', text: data.response || "YES! You guessed it! The answer is ROSE!" },
+          { type: 'ai', text: data.response || "YES! You guessed it! The answer is ROSE!", highlight: true },
         ]);
-        setConfidence(100);
         setIsThinking(false);
-        setIsRevealing(true);
-        setTimeout(() => onReveal(), 2500);
+        triggerReveal();
         return;
       }
 
       if (data.game_over) {
-        // Out of questions
         setMessages((prev) => [
           ...prev,
-          { type: 'ai', text: data.response || "20 questions used! The answer was ROSE!" },
+          { type: 'ai', text: "Time's up! Let me show you what was inside...", highlight: true },
         ]);
         setIsThinking(false);
-        setIsRevealing(true);
-        setTimeout(() => onReveal(), 2500);
+        triggerReveal();
         return;
       }
 
       const label = data.label;
-      const friendlyResponse = getRandomResponse(label);
-      const confIncrease = CONFIDENCE_MAP[label] || 2;
-      const newConf = Math.min(95, confidence + confIncrease + 2); // +2 per question
-
-      setConfidence(newConf);
       setMessages((prev) => [
         ...prev,
-        { type: 'ai', text: friendlyResponse, label },
+        { type: 'ai', text: getRandomResponse(label), label },
       ]);
       setIsThinking(false);
     } catch (e) {
@@ -175,7 +150,7 @@ export const AIGame = ({ onReveal }) => {
         { type: 'ai', text: "Hmm, I had a hiccup. Try again!" },
       ]);
     }
-  }, [input, isThinking, isRevealing, modelReady, confidence, onReveal]);
+  }, [input, isThinking, isRevealing, modelReady, triggerReveal]);
 
   const handleGuess = useCallback(async () => {
     const trimmed = input.trim();
@@ -200,10 +175,8 @@ export const AIGame = ({ onReveal }) => {
           ...prev,
           { type: 'ai', text: "YES! You got it! The answer is ROSE!", highlight: true },
         ]);
-        setConfidence(100);
         setIsThinking(false);
-        setIsRevealing(true);
-        setTimeout(() => onReveal(), 2500);
+        triggerReveal();
       } else {
         setQuestionCount(data.question_count || questionCount);
         setMessages((prev) => [
@@ -213,8 +186,13 @@ export const AIGame = ({ onReveal }) => {
         setIsThinking(false);
 
         if (data.game_over) {
-          setIsRevealing(true);
-          setTimeout(() => onReveal(), 2500);
+          setTimeout(() => {
+            setMessages((prev) => [
+              ...prev,
+              { type: 'ai', text: "Out of questions! Let me reveal what's inside...", highlight: true },
+            ]);
+            triggerReveal();
+          }, 1000);
         }
       }
     } catch (e) {
@@ -224,7 +202,7 @@ export const AIGame = ({ onReveal }) => {
         { type: 'ai', text: "Something went wrong, try again!" },
       ]);
     }
-  }, [input, isThinking, isRevealing, modelReady, questionCount, onReveal]);
+  }, [input, isThinking, isRevealing, modelReady, questionCount, triggerReveal]);
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -233,7 +211,6 @@ export const AIGame = ({ onReveal }) => {
     }
   };
 
-  // Loading state while model trains
   if (checkingModel || !modelReady) {
     return (
       <div className="stage-enter w-full max-w-md mx-auto px-4" data-testid="stage-2-loading">
@@ -254,7 +231,6 @@ export const AIGame = ({ onReveal }) => {
               The AI is preparing itself. This takes about 30-60 seconds on first load.
             </p>
           </div>
-          {/* Animated progress dots */}
           <div className="typing-dots">
             <span /><span /><span />
           </div>
@@ -262,6 +238,8 @@ export const AIGame = ({ onReveal }) => {
       </div>
     );
   }
+
+  const questionsLeft = maxQuestions - questionCount;
 
   return (
     <div
@@ -272,7 +250,7 @@ export const AIGame = ({ onReveal }) => {
         {/* Header */}
         <div className="flex items-center gap-4" data-testid="ai-header">
           <div className={`ai-orb ${isThinking ? 'thinking' : ''}`} data-testid="ai-orb" />
-          <div>
+          <div className="flex-1">
             <h2
               className="text-lg font-semibold text-slate-100 tracking-wide"
               style={{ fontFamily: "'Space Grotesk', sans-serif" }}
@@ -283,44 +261,37 @@ export const AIGame = ({ onReveal }) => {
               {isThinking ? 'thinking...' : 'ML-powered'}
             </p>
           </div>
+          {/* Question Counter Pill */}
+          <div
+            className="flex items-center gap-1.5 bg-white/[0.06] border border-white/10 rounded-full px-3 py-1.5"
+            data-testid="question-counter"
+          >
+            <span className="text-xs text-slate-400" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Q</span>
+            <span className={`text-sm font-bold ${questionsLeft <= 5 ? 'text-amber-400' : 'text-blue-400'}`}>
+              {questionCount}
+            </span>
+            <span className="text-xs text-slate-500">/ {maxQuestions}</span>
+          </div>
         </div>
 
         {/* Game Rules */}
         <div className="bg-white/[0.03] rounded-xl p-3 border border-white/5" data-testid="game-rules">
           <p className="text-sm text-slate-300 leading-relaxed">
-            I'm thinking of something. Ask me yes/no questions to figure out what it is!
-            You have <span className="text-blue-400 font-semibold">{maxQuestions - questionCount}</span> questions left.
+            I'm thinking of something. Ask me yes/no questions to figure it out!
+            {questionsLeft <= 5 ? (
+              <span className="text-amber-400 font-semibold"> Only {questionsLeft} questions left!</span>
+            ) : (
+              <span> You have <span className="text-blue-400 font-semibold">{questionsLeft}</span> questions left.</span>
+            )}
           </p>
           <p className="text-xs text-slate-500 mt-1.5">
-            Type your guess anytime using the <Sparkles size={12} className="inline text-amber-400" /> button
+            Think you know? Use the <Sparkles size={12} className="inline text-amber-400" /> Guess button
           </p>
-        </div>
-
-        {/* Question Counter & Confidence */}
-        <div className="space-y-2" data-testid="confidence-section">
-          <div className="flex justify-between items-center">
-            <span
-              className="text-xs text-slate-500 tracking-wider uppercase"
-              style={{ fontFamily: "'Space Grotesk', sans-serif" }}
-            >
-              Progress
-            </span>
-            <span className="text-xs text-blue-400 font-semibold">
-              Q {questionCount}/{maxQuestions}
-            </span>
-          </div>
-          <div className="confidence-bar-track">
-            <div
-              className="confidence-bar-fill"
-              style={{ width: `${confidence}%` }}
-              data-testid="confidence-bar"
-            />
-          </div>
         </div>
 
         {/* Chat Area */}
         <div
-          className="space-y-3 max-h-52 overflow-y-auto pr-1"
+          className="space-y-3 max-h-56 overflow-y-auto pr-1"
           data-testid="chat-area"
           style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(59,130,246,0.3) transparent' }}
         >
