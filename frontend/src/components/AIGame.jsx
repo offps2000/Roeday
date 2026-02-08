@@ -1,101 +1,63 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { Send } from 'lucide-react';
+import { Send, HelpCircle, Sparkles, Loader2 } from 'lucide-react';
+
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const API = `${BACKEND_URL}/api`;
 
 const THINK_SOUND = 'https://assets.mixkit.co/sfx/preview/mixkit-modern-click-box-check-1120.mp3';
 
-const KEYWORDS = {
-  nature: 12,
-  plant: 14,
-  alive: 10,
-  living: 10,
-  grow: 10,
-  flower: 22,
-  flowers: 22,
-  floral: 18,
-  petal: 18,
-  petals: 18,
-  bloom: 20,
-  blossom: 18,
-  bouquet: 22,
-  yellow: 20,
-  golden: 16,
-  gold: 14,
-  bright: 12,
-  sunny: 14,
-  sunshine: 14,
-  sundrop: 25,
-  sun: 10,
-  gift: 10,
-  present: 10,
-  surprise: 8,
-  happy: 10,
-  smile: 10,
-  joy: 10,
-  beautiful: 8,
-  pretty: 8,
-  lovely: 8,
-  rose: 16,
-  garden: 12,
-  color: 8,
-  colorful: 10,
-  fragrant: 14,
-  smell: 12,
-  scent: 14,
-  vase: 14,
-  stem: 12,
-  leaf: 10,
-  leaves: 10,
-  green: 8,
-  warm: 8,
-  day: 6,
+// Friendly response mappings for each AI label
+const LABEL_RESPONSES = {
+  yes: [
+    "Yes! You're on the right track!",
+    "That's correct! Keep going!",
+    "Absolutely! You're getting closer!",
+    "Yes indeed! Smart question!",
+    "Right on! You're narrowing it down!",
+  ],
+  no: [
+    "Nope, that's not it!",
+    "No, try a different direction!",
+    "Not quite! Think again...",
+    "No, but good question!",
+    "That's a no! Keep guessing!",
+  ],
+  close: [
+    "Getting warmer! You're so close!",
+    "Almost! You're in the right neighborhood!",
+    "Very close! Just a little more...",
+    "Hot! You're nearly there!",
+    "So close I can feel it!",
+  ],
+  "i don't know": [
+    "Hmm, that's a tricky one...",
+    "Not sure about that! Try something else.",
+    "Hard to say... ask something different!",
+    "That's debatable... keep exploring!",
+    "I'm on the fence with that one!",
+  ],
+  "too far away": [
+    "Way off! Think completely differently!",
+    "Not even close! Change your approach!",
+    "Miles away! Try another angle!",
+    "Totally off track! Rethink this!",
+    "Nope, you're in the wrong galaxy!",
+  ],
 };
 
-const LOW_RESPONSES = [
-  "Hmm, interesting question! Let me think about that...",
-  "That's a curious one! I'm processing...",
-  "Good question! I'm picking up some vibes...",
-  "Let me ponder that for a moment...",
-  "Ooh, that gives me something to work with!",
-  "I'm analyzing patterns... give me another clue!",
-];
+const getRandomResponse = (label) => {
+  const responses = LABEL_RESPONSES[label];
+  if (!responses) return "Interesting...";
+  return responses[Math.floor(Math.random() * responses.length)];
+};
 
-const MID_RESPONSES = [
-  "Now we're getting somewhere! I'm starting to see a picture...",
-  "That gives me a solid clue! I think I'm onto something...",
-  "Interesting! My circuits are buzzing with ideas now...",
-  "I'm connecting the dots... this is getting exciting!",
-  "Oh! Things are becoming clearer now...",
-  "My confidence is growing! A few more questions and I'll know...",
-];
-
-const HIGH_RESPONSES = [
-  "I'm very close now! I can almost see it...",
-  "Just a tiny bit more... I think I know what this is!",
-  "My sensors are tingling! I'm nearly there...",
-  "The answer is forming in my mind... so close!",
-];
-
-const FINAL_RESPONSE = "Wait... I think I know what this is...";
-
-const getResponseForConfidence = (confidence, matchedAny) => {
-  if (!matchedAny) {
-    const generic = [
-      "Hmm, that doesn't quite ring a bell yet. Try asking about its properties!",
-      "I need a different angle. What does it look like? How does it feel?",
-      "Interesting, but I need more clues. Think about colors, textures, nature...",
-      "Let me file that away. Ask me something about what it might be made of!",
-    ];
-    return generic[Math.floor(Math.random() * generic.length)];
-  }
-
-  if (confidence < 35) {
-    return LOW_RESPONSES[Math.floor(Math.random() * LOW_RESPONSES.length)];
-  } else if (confidence < 65) {
-    return MID_RESPONSES[Math.floor(Math.random() * MID_RESPONSES.length)];
-  } else if (confidence < 85) {
-    return HIGH_RESPONSES[Math.floor(Math.random() * HIGH_RESPONSES.length)];
-  }
-  return FINAL_RESPONSE;
+// Confidence increments per label
+const CONFIDENCE_MAP = {
+  yes: 15,
+  no: 3,
+  close: 12,
+  "i don't know": 5,
+  "too far away": 0,
 };
 
 export const AIGame = ({ onReveal }) => {
@@ -104,48 +66,51 @@ export const AIGame = ({ onReveal }) => {
   const [confidence, setConfidence] = useState(0);
   const [isThinking, setIsThinking] = useState(false);
   const [questionCount, setQuestionCount] = useState(0);
+  const [maxQuestions] = useState(20);
   const [isRevealing, setIsRevealing] = useState(false);
+  const [modelReady, setModelReady] = useState(false);
+  const [checkingModel, setCheckingModel] = useState(true);
   const chatEndRef = useRef(null);
   const inputRef = useRef(null);
+  const pollRef = useRef(null);
+
+  // Poll for model readiness
+  useEffect(() => {
+    const checkStatus = async () => {
+      try {
+        const res = await fetch(`${API}/game/status`);
+        const data = await res.json();
+        if (data.model_ready) {
+          setModelReady(true);
+          setCheckingModel(false);
+          clearInterval(pollRef.current);
+          // Reset game on mount
+          await fetch(`${API}/game/reset`, { method: 'POST' });
+          setTimeout(() => inputRef.current?.focus(), 300);
+        }
+      } catch (e) {
+        // Server not ready yet
+      }
+    };
+
+    checkStatus();
+    pollRef.current = setInterval(checkStatus, 2000);
+
+    return () => clearInterval(pollRef.current);
+  }, []);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  useEffect(() => {
-    // Focus input on mount after a short delay
-    const timer = setTimeout(() => inputRef.current?.focus(), 600);
-    return () => clearTimeout(timer);
-  }, []);
-
-  const analyzeInput = useCallback((text) => {
-    const words = text.toLowerCase().replace(/[^a-z\s]/g, '').split(/\s+/);
-    let totalScore = 0;
-    let matched = false;
-
-    words.forEach((word) => {
-      if (KEYWORDS[word]) {
-        totalScore += KEYWORDS[word];
-        matched = true;
-      }
-    });
-
-    // Bonus for longer, more descriptive questions
-    if (words.length > 5) totalScore += 3;
-    if (text.includes('?')) totalScore += 2;
-
-    return { totalScore, matched };
-  }, []);
-
-  const handleAsk = useCallback(() => {
+  const handleAsk = useCallback(async () => {
     const trimmed = input.trim();
-    if (!trimmed || isThinking || isRevealing) return;
+    if (!trimmed || isThinking || isRevealing || !modelReady) return;
 
     const newQuestion = { type: 'user', text: trimmed };
     setMessages((prev) => [...prev, newQuestion]);
     setInput('');
     setIsThinking(true);
-    setQuestionCount((prev) => prev + 1);
 
     // Play subtle click
     try {
@@ -154,29 +119,112 @@ export const AIGame = ({ onReveal }) => {
       audio.play().catch(() => {});
     } catch (e) { /* silent */ }
 
-    const { totalScore, matched } = analyzeInput(trimmed);
+    try {
+      const res = await fetch(`${API}/game/ask`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: trimmed }),
+      });
+      const data = await res.json();
 
-    // Simulate thinking delay
-    const thinkTime = 1200 + Math.random() * 1500;
+      // Simulate thinking delay
+      await new Promise((r) => setTimeout(r, 800 + Math.random() * 1000));
 
-    setTimeout(() => {
-      const newConfidence = Math.min(100, confidence + totalScore);
-      setConfidence(newConfidence);
+      setQuestionCount(data.question_count || 0);
 
-      const responseText = getResponseForConfidence(newConfidence, matched);
-      setMessages((prev) => [...prev, { type: 'ai', text: responseText }]);
-      setIsThinking(false);
-
-      // Check if we should reveal
-      // Require at least 2 questions AND confidence > 85
-      if (newConfidence >= 85 && questionCount >= 1) {
+      if (data.guessed_correctly) {
+        // User guessed correctly via ask
+        setMessages((prev) => [
+          ...prev,
+          { type: 'ai', text: data.response || "YES! You guessed it! The answer is ROSE!" },
+        ]);
+        setConfidence(100);
+        setIsThinking(false);
         setIsRevealing(true);
-        setTimeout(() => {
-          onReveal();
-        }, 2500);
+        setTimeout(() => onReveal(), 2500);
+        return;
       }
-    }, thinkTime);
-  }, [input, isThinking, isRevealing, confidence, questionCount, analyzeInput, onReveal]);
+
+      if (data.game_over) {
+        // Out of questions
+        setMessages((prev) => [
+          ...prev,
+          { type: 'ai', text: data.response || "20 questions used! The answer was ROSE!" },
+        ]);
+        setIsThinking(false);
+        setIsRevealing(true);
+        setTimeout(() => onReveal(), 2500);
+        return;
+      }
+
+      const label = data.label;
+      const friendlyResponse = getRandomResponse(label);
+      const confIncrease = CONFIDENCE_MAP[label] || 2;
+      const newConf = Math.min(95, confidence + confIncrease + 2); // +2 per question
+
+      setConfidence(newConf);
+      setMessages((prev) => [
+        ...prev,
+        { type: 'ai', text: friendlyResponse, label },
+      ]);
+      setIsThinking(false);
+    } catch (e) {
+      setIsThinking(false);
+      setMessages((prev) => [
+        ...prev,
+        { type: 'ai', text: "Hmm, I had a hiccup. Try again!" },
+      ]);
+    }
+  }, [input, isThinking, isRevealing, modelReady, confidence, onReveal]);
+
+  const handleGuess = useCallback(async () => {
+    const trimmed = input.trim();
+    if (!trimmed || isThinking || isRevealing || !modelReady) return;
+
+    setMessages((prev) => [...prev, { type: 'user', text: `My guess: ${trimmed}` }]);
+    setInput('');
+    setIsThinking(true);
+
+    try {
+      const res = await fetch(`${API}/game/guess`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ guess: trimmed }),
+      });
+      const data = await res.json();
+
+      await new Promise((r) => setTimeout(r, 800));
+
+      if (data.correct) {
+        setMessages((prev) => [
+          ...prev,
+          { type: 'ai', text: "YES! You got it! The answer is ROSE!", highlight: true },
+        ]);
+        setConfidence(100);
+        setIsThinking(false);
+        setIsRevealing(true);
+        setTimeout(() => onReveal(), 2500);
+      } else {
+        setQuestionCount(data.question_count || questionCount);
+        setMessages((prev) => [
+          ...prev,
+          { type: 'ai', text: data.message || "Nope, try again!" },
+        ]);
+        setIsThinking(false);
+
+        if (data.game_over) {
+          setIsRevealing(true);
+          setTimeout(() => onReveal(), 2500);
+        }
+      }
+    } catch (e) {
+      setIsThinking(false);
+      setMessages((prev) => [
+        ...prev,
+        { type: 'ai', text: "Something went wrong, try again!" },
+      ]);
+    }
+  }, [input, isThinking, isRevealing, modelReady, questionCount, onReveal]);
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -185,38 +233,80 @@ export const AIGame = ({ onReveal }) => {
     }
   };
 
+  // Loading state while model trains
+  if (checkingModel || !modelReady) {
+    return (
+      <div className="stage-enter w-full max-w-md mx-auto px-4" data-testid="stage-2-loading">
+        <div className="glass-card p-8 flex flex-col items-center gap-6">
+          <div className="ai-orb thinking" />
+          <div className="text-center space-y-3">
+            <h2
+              className="text-lg font-semibold text-slate-100 tracking-wide"
+              style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+            >
+              Waking up the Oracle...
+            </h2>
+            <div className="flex items-center justify-center gap-2 text-sm text-slate-400">
+              <Loader2 className="animate-spin" size={16} />
+              <span>Training neural pathways</span>
+            </div>
+            <p className="text-xs text-slate-500 max-w-xs">
+              The AI is preparing itself. This takes about 30-60 seconds on first load.
+            </p>
+          </div>
+          {/* Animated progress dots */}
+          <div className="typing-dots">
+            <span /><span /><span />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className="stage-enter w-full max-w-md mx-auto px-4"
       data-testid="stage-2-ai-game"
     >
-      <div className="glass-card p-6 md:p-8 space-y-6">
+      <div className="glass-card p-6 md:p-8 space-y-5">
         {/* Header */}
         <div className="flex items-center gap-4" data-testid="ai-header">
           <div className={`ai-orb ${isThinking ? 'thinking' : ''}`} data-testid="ai-orb" />
           <div>
-            <h2 className="text-lg font-semibold text-slate-100 tracking-wide" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+            <h2
+              className="text-lg font-semibold text-slate-100 tracking-wide"
+              style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+            >
               Mystery Oracle
             </h2>
             <p className="text-xs text-slate-400">
-              {isThinking ? 'thinking...' : 'online'}
+              {isThinking ? 'thinking...' : 'ML-powered'}
             </p>
           </div>
         </div>
 
-        {/* Prompt */}
-        <p className="text-sm text-slate-300 leading-relaxed" data-testid="ai-prompt">
-          Ask me any question. I'll try to guess what's inside the box.
-        </p>
+        {/* Game Rules */}
+        <div className="bg-white/[0.03] rounded-xl p-3 border border-white/5" data-testid="game-rules">
+          <p className="text-sm text-slate-300 leading-relaxed">
+            I'm thinking of something. Ask me yes/no questions to figure out what it is!
+            You have <span className="text-blue-400 font-semibold">{maxQuestions - questionCount}</span> questions left.
+          </p>
+          <p className="text-xs text-slate-500 mt-1.5">
+            Type your guess anytime using the <Sparkles size={12} className="inline text-amber-400" /> button
+          </p>
+        </div>
 
-        {/* Confidence Bar */}
+        {/* Question Counter & Confidence */}
         <div className="space-y-2" data-testid="confidence-section">
           <div className="flex justify-between items-center">
-            <span className="text-xs text-slate-500 tracking-wider uppercase" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-              Confidence
+            <span
+              className="text-xs text-slate-500 tracking-wider uppercase"
+              style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+            >
+              Progress
             </span>
             <span className="text-xs text-blue-400 font-semibold">
-              {Math.round(confidence)}%
+              Q {questionCount}/{maxQuestions}
             </span>
           </div>
           <div className="confidence-bar-track">
@@ -230,7 +320,7 @@ export const AIGame = ({ onReveal }) => {
 
         {/* Chat Area */}
         <div
-          className="space-y-3 max-h-52 overflow-y-auto pr-1 scrollbar-thin"
+          className="space-y-3 max-h-52 overflow-y-auto pr-1"
           data-testid="chat-area"
           style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(59,130,246,0.3) transparent' }}
         >
@@ -244,11 +334,18 @@ export const AIGame = ({ onReveal }) => {
                 className={`max-w-[85%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
                   msg.type === 'user'
                     ? 'bg-blue-500/20 text-blue-100 rounded-br-md border border-blue-500/20'
+                    : msg.highlight
+                    ? 'bg-amber-500/20 text-amber-200 rounded-bl-md border border-amber-500/30'
                     : 'bg-white/5 text-slate-300 rounded-bl-md border border-white/5'
                 }`}
                 data-testid={`chat-message-${msg.type}-${idx}`}
               >
                 {msg.text}
+                {msg.label && (
+                  <span className="block text-xs text-slate-500 mt-1 italic">
+                    [{msg.label}]
+                  </span>
+                )}
               </div>
             </div>
           ))}
@@ -269,19 +366,22 @@ export const AIGame = ({ onReveal }) => {
         {/* Revealing Message */}
         {isRevealing && (
           <div className="text-center py-3" data-testid="revealing-message">
-            <p className="text-amber-400 font-semibold animate-pulse text-base" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-              I think I know what this is...
+            <p
+              className="text-amber-400 font-semibold animate-pulse text-base"
+              style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+            >
+              Unveiling the mystery...
             </p>
           </div>
         )}
 
         {/* Input Area */}
         {!isRevealing && (
-          <div className="flex gap-3 items-end" data-testid="input-area">
+          <div className="flex gap-2 items-end" data-testid="input-area">
             <input
               ref={inputRef}
               className="game-input flex-1"
-              placeholder="Type your question..."
+              placeholder="Ask a yes/no question..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -290,23 +390,31 @@ export const AIGame = ({ onReveal }) => {
               autoComplete="off"
             />
             <button
-              className="ask-button flex items-center gap-2"
+              className="ask-button flex items-center gap-1.5"
               onClick={handleAsk}
               disabled={!input.trim() || isThinking}
               data-testid="ask-button"
+              title="Ask a question"
             >
-              <Send size={16} />
-              <span className="hidden sm:inline">Ask</span>
+              <HelpCircle size={15} />
+              <span className="hidden sm:inline text-xs">Ask</span>
+            </button>
+            <button
+              className="ask-button flex items-center gap-1.5"
+              onClick={handleGuess}
+              disabled={!input.trim() || isThinking}
+              data-testid="guess-button"
+              title="Submit your guess"
+              style={{
+                background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                boxShadow: '0 4px 15px rgba(245, 158, 11, 0.3)',
+              }}
+            >
+              <Sparkles size={15} />
+              <span className="hidden sm:inline text-xs">Guess</span>
             </button>
           </div>
         )}
-
-        {/* Question Counter */}
-        <p className="text-xs text-slate-600 text-center" data-testid="question-count">
-          {questionCount === 0
-            ? 'Ask anything to start guessing!'
-            : `${questionCount} question${questionCount > 1 ? 's' : ''} asked`}
-        </p>
       </div>
     </div>
   );
