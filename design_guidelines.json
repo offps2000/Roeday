@@ -1,0 +1,113 @@
+{
+  "persona": {
+    "identity": "E1 - The Anti-AI Designer",
+    "core_principles": [
+      "Fusion over Imitation: Mix disparate disciplines (Tech + Botany).",
+      "Emotion First: Every interaction must feel 'magical' and 'warm'.",
+      "Content is King: The narrative arc (Mystery -> Play -> Delight) drives the design.",
+      "Negative Space: Use deep dark space to make the glowing elements pop."
+    ],
+    "anti_patterns": [
+      "No generic 'Bootstrap' layouts.",
+      "No flat, boring buttons. Use glass or glowing gradients.",
+      "No romantic reds/pinks. Strictly Yellow/Gold/Blue for friendship."
+    ]
+  },
+  "project_config": {
+    "fonts": {
+      "heading": "Space Grotesk",
+      "body": "Quicksand",
+      "cdn_import": "https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;600&family=Space+Grotesk:wght@300;500;700&display=swap"
+    },
+    "tech_stack": [
+      "React",
+      "Tailwind CSS",
+      "Framer Motion (optional, but CSS transitions preferred for simple box)",
+      "Howler.js (or native Audio)"
+    ]
+  },
+  "theme": {
+    "mode": "dark",
+    "colors": {
+      "background": {
+        "base": "#020617",
+        "gradient": "bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-900 via-[#0a0f2c] to-black"
+      },
+      "primary": {
+        "hex": "#3b82f6",
+        "tailwind": "blue-500",
+        "glow": "0 0 20px rgba(59, 130, 246, 0.5)"
+      },
+      "accent": {
+        "hex": "#fbbf24",
+        "tailwind": "amber-400",
+        "description": "Used for the 'Friendship' signal (Flowers, Stars)."
+      },
+      "glass": {
+        "surface": "bg-white/5 backdrop-blur-xl border border-white/10 shadow-[0_8px_32px_0_rgba(0,0,0,0.37)]",
+        "interactive": "hover:bg-white/10 transition-all duration-300 ease-out active:scale-95"
+      }
+    },
+    "layout": {
+      "container": "min-h-screen w-full flex flex-col items-center justify-center overflow-hidden relative",
+      "spacing": "p-6 md:p-12 gap-8"
+    }
+  },
+  "assets": {
+    "images": [
+      {
+        "id": "background_particles",
+        "url": "https://images.unsplash.com/photo-1721331762508-13fe0743499f?auto=format&fit=crop&q=80",
+        "usage": "Low opacity (0.3) background overlay with blend-mode-screen"
+      },
+      {
+        "id": "yellow_flowers",
+        "url": "https://images.unsplash.com/photo-1675735721863-1bea5c75720f?auto=format&fit=crop&q=80",
+        "usage": "Stage 3 Reveal. Must be masked or framed elegantly."
+      }
+    ],
+    "audio": {
+      "click": "https://assets.mixkit.co/sfx/preview/mixkit-modern-click-box-check-1120.mp3",
+      "success": "https://assets.mixkit.co/sfx/preview/mixkit-ethereal-fairy-win-sound-2019.mp3",
+      "background": "Optional: Soft ambient drone or silence."
+    }
+  },
+  "components": {
+    "Stage1_GiftBox": {
+      "concept": "A floating, glowing geometric artifact. Not a cartoon box.",
+      "structure": "SVG based. Three parts: Box Body, Lid, Ribbon.",
+      "animation_css": ".lid { transition: transform 1s cubic-bezier(0.4, 0, 0.2, 1); transform-origin: top; } .open .lid { transform: rotateX(110deg) translateY(-20px); opacity: 0; } .box { animation: float 6s ease-in-out infinite; } @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-15px); } }",
+      "interaction": "Click to trigger 'open' state -> Wait 1s -> Transition to Stage 2"
+    },
+    "Stage2_AIGame": {
+      "concept": "Friendly AI Assistant (Akinator vibe). Glass card floating in void.",
+      "ui_elements": [
+        "Avatar: A pulsing glowing orb (CSS div with box-shadow) instead of a face.",
+        "Input: Transparent background, bottom border only, typing effect.",
+        "Confidence Meter: A progress bar that fills up as user types 'correct' keywords (friend, yellow, happy, etc.)."
+      ],
+      "logic": "Check user input for keywords. If match -> increment confidence. If confidence > 80% -> Stage 3."
+    },
+    "Stage3_Reveal": {
+      "concept": "The Digital Bloom. Flowers appear with light.",
+      "animation": "Scale up from 0.8 to 1. opacity 0 to 1. Glow effect behind flowers.",
+      "text_card": "A 'tag' hanging from the flowers. Handwritten font style (Quicksand). Editable message: 'Happy Rose Day! To a friendship that's as bright as these.'",
+      "visuals": "Use the Yellow Flowers image centrally. Add 'firefly' particles (small yellow divs moving randomly) around it."
+    }
+  },
+  "instructions_to_main_agent": [
+    "1. Setup Tailwind for Dark Mode in `tailwind.config.js`.",
+    "2. Add the Google Fonts to `index.css` or `index.html`.",
+    "3. Create a state machine: `stage` (1 | 2 | 3).",
+    "4. Build the Gift Box as a separate component `GiftBox.js` with the SVG code.",
+    "5. For Stage 2, simulate AI thinking with `setTimeout` before showing the next question/result.",
+    "6. Ensure the 'Yellow Flowers' image is preloaded so it pops instantly.",
+    "7. Use `canvas-confetti` (if available) or simple CSS particles for the reveal."
+  ],
+  "universal_guidelines": [
+    "NO GRADIENT TEXT on dark backgrounds (readability issues).",
+    "Use 'tracking-wide' for Uppercase labels.",
+    "Buttons should have 'ring' on focus for accessibility.",
+    "Do not ask the user for confirmation. Just build it."
+  ]
+}
